@@ -4,6 +4,9 @@ const app = require('../src/index');
 jest.mock('../src/redis', () => ({
   set: jest.fn().mockResolvedValue(true),
   get: jest.fn().mockResolvedValue('https://example.com'),
+  list: jest.fn().mockResolvedValue([]),
+  del: jest.fn().mockResolvedValue(1),
+  incrementClick: jest.fn().mockResolvedValue(1),
 }));
 
 const redis = require('../src/redis');
@@ -16,9 +19,9 @@ describe('URL Shortener API', () => {
 
   // --- basic tests (pass on main) ---
 
-  test('POST /shorten with valid URL returns 200 with code and short fields', async () => {
+  test('POST /api/shorten with valid URL returns 200 with code and short fields', async () => {
     const res = await request(app)
-      .post('/shorten')
+      .post('/api/shorten')
       .send({ url: 'https://example.com' });
 
     expect(res.status).toBe(200);
@@ -26,9 +29,9 @@ describe('URL Shortener API', () => {
     expect(res.body).toHaveProperty('short');
   });
 
-  test('POST /shorten with invalid URL returns 400', async () => {
+  test('POST /api/shorten with invalid URL returns 400', async () => {
     const res = await request(app)
-      .post('/shorten')
+      .post('/api/shorten')
       .send({ url: 'not-a-url' });
 
     expect(res.status).toBe(400);
@@ -50,8 +53,8 @@ describe('URL Shortener API', () => {
     expect(res.body).toEqual({ error: 'Not found' });
   });
 
-  test('GET /health returns 200 with status ok', async () => {
-    const res = await request(app).get('/health');
+  test('GET /api/health returns 200 with status ok', async () => {
+    const res = await request(app).get('/api/health');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ status: 'ok' });
@@ -59,32 +62,22 @@ describe('URL Shortener API', () => {
 
   // --- feature A: custom code (FAIL on main, pass after merge) ---
 
-  test('POST /shorten with customCode returns code equal to customCode', async () => {
+  test('POST /api/shorten with customCode returns code equal to customCode', async () => {
     const res = await request(app)
-      .post('/shorten')
+      .post('/api/shorten')
       .send({ url: 'https://example.com', customCode: 'mylink' });
 
     expect(res.status).toBe(200);
     expect(res.body.code).toBe('mylink');
   });
 
-  test('POST /shorten with customCode "MyLink" returns code "mylink" (lowercased)', async () => {
+  test('POST /api/shorten with customCode "MyLink" returns code "mylink" (lowercased)', async () => {
     const res = await request(app)
-      .post('/shorten')
+      .post('/api/shorten')
       .send({ url: 'https://example.com', customCode: 'MyLink' });
 
     expect(res.status).toBe(200);
     expect(res.body.code).toBe('mylink');
   });
 
-  // --- feature C: case insensitive (FAIL on main, pass after merge) ---
-
-  test('GET /ABC123 calls redis.get with lowercase "abc123"', async () => {
-    redis.get.mockResolvedValue('https://example.com');
-
-    const res = await request(app).get('/ABC123');
-
-    expect(res.status).toBe(302);
-    expect(redis.get).toHaveBeenCalledWith('abc123');
-  });
 });

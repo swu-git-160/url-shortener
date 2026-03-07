@@ -9,7 +9,7 @@ jest.mock('../src/redis', () => ({
 describe('Custom Code Feature', () => {
   test('POST with customCode "mylink" returns code "mylink"', async () => {
     const res = await request(app)
-      .post('/shorten')
+      .post('/api/shorten')
       .send({ url: 'https://example.com', customCode: 'mylink' });
 
     expect(res.status).toBe(200);
@@ -18,7 +18,7 @@ describe('Custom Code Feature', () => {
 
   test('POST with customCode "MyLink" returns code "mylink" (lowercased)', async () => {
     const res = await request(app)
-      .post('/shorten')
+      .post('/api/shorten')
       .send({ url: 'https://example.com', customCode: 'MyLink' });
 
     expect(res.status).toBe(200);
@@ -27,7 +27,7 @@ describe('Custom Code Feature', () => {
 
   test('POST without customCode returns auto-generated code', async () => {
     const res = await request(app)
-      .post('/shorten')
+      .post('/api/shorten')
       .send({ url: 'https://example.com' });
 
     expect(res.status).toBe(200);

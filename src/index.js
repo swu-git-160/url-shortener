@@ -10,7 +10,9 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-app.post('/shorten', async (req, res) => {
+const api = express.Router();
+
+api.post('/shorten', async (req, res) => {
   const { url } = req.body;
 
   if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
@@ -23,12 +25,20 @@ app.post('/shorten', async (req, res) => {
   return res.status(200).json({ code, short: `/${code}` });
 });
 
-app.get('/urls', async (req, res) => {
+api.get('/urls', async (req, res) => {
   const entries = await redis.list();
   return res.status(200).json(entries);
 });
 
-app.delete('/:code', async (req, res) => {
+api.patch('/:code/toggle', async (req, res) => {
+  const enabled = await redis.toggle(req.params.code);
+  if (enabled === null) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+  return res.status(200).json({ code: req.params.code, enabled });
+});
+
+api.delete('/:code', async (req, res) => {
   const deleted = await redis.del(req.params.code);
   if (!deleted) {
     return res.status(404).json({ error: 'Not found' });
@@ -36,20 +46,23 @@ app.delete('/:code', async (req, res) => {
   return res.status(200).json({ deleted: req.params.code });
 });
 
-app.get('/health', (req, res) => {
+api.get('/health', (req, res) => {
   return res.status(200).json({ status: 'ok' });
 });
 
+app.use('/api', api);
 app.use('/ui', express.static(path.join(__dirname, '../www')));
 
-// /:code must be last — lets /health, /urls, /ui resolve first
+// short URL redirect — must be last
 app.get('/:code', async (req, res) => {
-  const url = await redis.get(req.params.code);
+  const code = req.params.code;
+  const url = await redis.get(code);
 
   if (!url) {
     return res.status(404).json({ error: 'Not found' });
   }
 
+  redis.incrementClick(code);
   return res.redirect(302, url);
 });
 
