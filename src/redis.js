@@ -29,37 +29,32 @@ const redis = {
   },
 
   async list() {
-    const codes = Array.from(store.keys());
+    const entries = [];
 
-    const entries = await Promise.all(
-      codes.map(async (code) => {
-        const raw = store.get(code);
-        if (!raw) return null;
+    for (const [code, raw] of store.entries()) {
+      try {
+        const { url, createdAt, clicks, enabled } = JSON.parse(raw);
+        entries.push({
+          code,
+          url,
+          createdAt,
+          clicks: clicks || 0,
+          enabled: enabled !== false
+        });
+      } catch {
+        entries.push({
+          code,
+          url: raw,
+          createdAt: null,
+          clicks: 0,
+          enabled: true
+        });
+      }
+    }
 
-        try {
-          const { url, createdAt, clicks, enabled } = JSON.parse(raw);
-          return {
-            code,
-            url,
-            createdAt,
-            clicks: clicks || 0,
-            enabled: enabled !== false
-          };
-        } catch {
-          return {
-            code,
-            url: raw,
-            createdAt: null,
-            clicks: 0,
-            enabled: true
-          };
-        }
-      })
+    return entries.sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
-
-    return entries
-      .filter(Boolean)
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
 
   async incr(key) {
