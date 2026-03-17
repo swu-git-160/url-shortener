@@ -22,7 +22,7 @@ try {
   console.error('Failed to read student ID:', err.message);
 }
 
-// Read build time from file (for Docker) or use ENV variable (for local dev)
+// Read build time from file
 let buildTime = 'NOT_SET';
 try {
   const buildTimePath = process.env.BUILD_TIME_FILE || path.join(__dirname, '../build_time.txt');
@@ -45,11 +45,12 @@ api.post('/shorten', async (req, res) => {
     return res.status(400).json({ error: 'Invalid URL' });
   }
 
- HEAD
-  const code = (req.body.customCode || randomCode(6)).toLowerCase();
+  // custom code feature
+  const code = (req.body.customCode || randomCode()).toLowerCase();
 
   await redis.set(code, url);
- origin/feat/counter
+
+  // counter feature
   await redis.incr(`count:${code}`);
 
   return res.status(200).json({ code, short: `/${code}` });
@@ -58,6 +59,13 @@ api.post('/shorten', async (req, res) => {
 api.get('/urls', async (req, res) => {
   const entries = await redis.list();
   return res.status(200).json(entries);
+});
+
+// toggle feature
+api.patch('/:code/toggle', async (req, res) => {
+  const enabled = await redis.toggle(req.params.code);
+  if (enabled === null) return res.status(404).json({ error: 'Not found' });
+  return res.status(200).json({ code: req.params.code, enabled });
 });
 
 api.delete('/:code', async (req, res) => {
@@ -82,7 +90,7 @@ api.get('/info', (req, res) => {
 app.use('/api', api);
 app.use('/ui', express.static(path.join(__dirname, '../www')));
 
-// short URL redirect — must be last
+// redirect
 app.get('/:code', async (req, res) => {
   const code = req.params.code;
   const url = await redis.get(code);

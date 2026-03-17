@@ -1,70 +1,93 @@
-const Redis = require('ioredis');
-
-const client = new Redis({
-  host: process.env.REDIS_HOST || 'localhost',
-  port: 6379,
-});
-
-const DEFAULT_TTL = 604800; // 7 days
-const CODES_SET = '__codes__';
+const store = new Map();
 
 const redis = {
-  async set(code, url, ttlSeconds = DEFAULT_TTL) {
-    const entry = JSON.stringify({ url, createdAt: new Date().toISOString() });
-    await client.set(code, entry, 'EX', ttlSeconds);
-    await client.sadd(CODES_SET, code);
-    return true;
+  async set(code, url) {
+    const data = {
+      url,
+      createdAt: new Date().toISOString(),
+      clicks: 0,
+      enabled: true
+    };
+    store.set(code, JSON.stringify(data));
   },
 
   async get(code) {
-    const raw = await client.get(code);
+    const raw = store.get(code);
     if (!raw) return null;
-    try { return JSON.parse(raw).url; } catch { return raw; }
+
+    try {
+      const { url, enabled } = JSON.parse(raw);
+      if (enabled === false) return null;
+      return url;
+    } catch {
+      return raw;
+    }
   },
 
-  async incrementClick(code) {
-    const raw = await client.get(code);
-    if (!raw) return;
-    try {
-      const parsed = JSON.parse(raw);
-      parsed.clicks = (parsed.clicks || 0) + 1;
-      const ttl = await client.ttl(code);
-      if (ttl > 0) {
-        await client.set(code, JSON.stringify(parsed), 'EX', ttl);
-      } else {
-        await client.set(code, JSON.stringify(parsed));
-      }
-    } catch { /* ignore */ }
+  async del(code) {
+    return store.delete(code);
   },
 
   async list() {
-    const codes = await client.smembers(CODES_SET);
-    if (!codes.length) return [];
+    const codes = Array.from(store.keys());
 
-    const entries = await Promise.all(codes.map(async (code) => {
-      const raw = await client.get(code);
-      if (!raw) {
-        await client.srem(CODES_SET, code); // clean up expired
-        return null;
-      }
-      try {
-        const { url, createdAt, clicks } = JSON.parse(raw);
-        return { code, url, createdAt, clicks: clicks || 0 };
-      } catch {
-        return { code, url: raw, createdAt: null, clicks: 0 };
-      }
-    }));
+    const entries = await Promise.all(
+      codes.map(async (code) => {
+        const raw = store.get(code);
+        if (!raw) return null;
+
+        try {
+          const { url, createdAt, clicks, enabled } = JSON.parse(raw);
+          return {
+            code,
+            url,
+            createdAt,
+            clicks: clicks || 0,
+            enabled: enabled !== false
+          };
+        } catch {
+          return {
+            code,
+            url: raw,
+            createdAt: null,
+            clicks: 0,
+            enabled: true
+          };
+        }
+      })
+    );
 
     return entries
       .filter(Boolean)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
 
-  async del(code) {
-    const result = await client.del(code);
-    await client.srem(CODES_SET, code);
-    return result;
+  async incr(key) {
+    const code = key.replace("count:", "");
+    const raw = store.get(code);
+    if (!raw) return 0;
+
+    const data = JSON.parse(raw);
+    data.clicks = (data.clicks || 0) + 1;
+
+    store.set(code, JSON.stringify(data));
+    return data.clicks;
   },
+
+  async incrementClick(code) {
+    return this.incr(`count:${code}`);
+  },
+
+  async toggle(code) {
+    const raw = store.get(code);
+    if (!raw) return null;
+
+    const data = JSON.parse(raw);
+    data.enabled = !(data.enabled !== false);
+
+    store.set(code, JSON.stringify(data));
+    return data.enabled;
+  }
 };
 
 module.exports = redis;
